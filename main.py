@@ -6,7 +6,9 @@ import time
 import pandas as pd
 import pytz
 import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+from Templates_1_tg import create_msg_file
 from excel_handler import create_pivot_table, extract_data
 from sales_analysis import get_trend
 
@@ -87,18 +89,43 @@ def background_task():
 
 
 def get_message(company, type, trend):
+    keyboard = InlineKeyboardMarkup()
     msg = f'👤 <b>Контрагент:</b> {company}\n' \
           f'📋 <b>Тип:</b> {type}\n'
     if trend == -1:
         msg += f'📉 <b>Состояние:</b> Падение объема закупок\n' \
-               f'🛎️ <b>Рекомендация:</b> Свяжитесь с клиентом, уточните причины снижения и предложите акции.'
+               f'🛎️ <b>Рекомендация:</b> Свяжитесь с клиентом, уточните причины снижения и обсудите индивидуальные условия.'
+        keyboard.add(InlineKeyboardButton("Письмо клиенту", callback_data="create_volume_down"))
+        keyboard.add(InlineKeyboardButton("Все данные", callback_data="excel_down"))
     elif trend == 0:
         msg += f'📊 <b>Состояние:</b> Объем закупок стабильный\n' \
-               f'🛎️ <b>Рекомендация:</b> Свяжитесь с клиентом и предложите акции.'
+               f'🛎️ <b>Рекомендация:</b> Стабильность - признак мастерства.'
     elif trend == 1:
         msg += f'📈 <b>Состояние:</b> Рост объема закупок\n' \
-               f'🛎️ <b>Рекомендация:</b> Поздравьте клиента и предложите дополнительные продукты.'
-    return msg
+               f'🛎️ <b>Рекомендация:</b> Отметьте рост объёмов и обсудите с клиентом эксклюзивные предложения.'
+        keyboard.add(InlineKeyboardButton("Письмо клиенту", callback_data="create_volume_up"))
+        keyboard.add(InlineKeyboardButton("Все данные", callback_data="excel_up"))
+    elif trend == -2:
+        msg += f'⏰ <b>Состояние:</b> Есть неоплаченные счета\n' \
+               f'🛎️ <b>Рекомендация:</b> Уточните причину задержки оплаты.'
+        keyboard.add(InlineKeyboardButton("Письмо клиенту", callback_data="create_unpaid"))
+        keyboard.add(InlineKeyboardButton("Все данные", callback_data="excel_not_sale"))
+    keyboard.add(InlineKeyboardButton("Обработан", callback_data="skip"))
+    return msg, keyboard
+
+
+def get_not_sale(not_sale_df):
+    now = datetime.now()
+    some_weeks_later = now + timedelta(weeks=1)
+
+    upcoming_events = not_sale_df[
+        (not_sale_df['Дата отгрузки (отправки)'] >= pd.to_datetime(now)) &
+        (not_sale_df['Дата отгрузки (отправки)'] <= pd.to_datetime(some_weeks_later))
+    ]
+    if len(upcoming_events.index) > 0:
+        return True
+    else:
+        return False
 
 
 @bot.message_handler(commands=['start'])
@@ -139,16 +166,88 @@ def send_summary(message):
     df = df[df['telegram_id'] == str(message.from_user.id)]
     df = get_trend(df)
     for _, row in df.iterrows():
-        type_company = excel_data[excel_data['Контрагент'] == row['Контрагент']]['Тип контрагента'].iloc[0]
-        if isinstance(row['Тренд'], int):
-            msg = get_message(row['Контрагент'], type_company, row['Тренд'])
-            bot.send_message(message.chat.id, msg, parse_mode='HTML')
+        company_df = excel_data[excel_data['Контрагент'] == row['Контрагент']]
+        type_company = company_df['Тип контрагента'].iloc[0]
+        not_sale_df = company_df[company_df['Оплачено'] == 0]
+        if get_not_sale(not_sale_df):
+            msg, keyboard = get_message(row['Контрагент'], type_company, -2)
+            bot.send_message(message.chat.id, msg, parse_mode='HTML', reply_markup=keyboard)
+        elif isinstance(row['Тренд'], int):
+            msg, keyboard = get_message(row['Контрагент'], type_company, row['Тренд'])
+            bot.send_message(message.chat.id, msg, parse_mode='HTML', reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: True)
-def callback_inline(call):
-    if call.data == "test":
-        bot.send_message(call.message.chat.id, "Вы нажали inline кнопку!")
+def handle_callback(call):
+    """Обработчик нажатий на инлайн-кнопки"""
+    chat_id = call.message.chat.id
+
+    try:
+        bot.answer_callback_query(call.id)
+        if call.data == "create_msg":
+            letter_type = "shipping"
+        elif call.data == "create_unpaid":
+            letter_type = "unpaid"
+        elif call.data == "create_volume_down":
+            letter_type = "volume_down"
+        elif call.data == "create_volume_up":
+            letter_type = "volume_up"
+        elif call.data == "create_overdue":
+            letter_type = "overdue"
+        elif call.data == "skip":
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+            return
+        elif call.data == "excel_up":
+            file_path = 'test_data_template.xlsx'
+            try:
+                with open(file_path, 'rb') as file:
+                    bot.send_document(chat_id=call.message.chat.id, document=file)
+            except Exception as e:
+                bot.send_message(call.message.chat.id, "Произошла ошибка при отправке файла.")
+            return
+        elif call.data == "excel_down":
+            file_path = 'test_data_template.xlsx'
+            try:
+                with open(file_path, 'rb') as file:
+                    bot.send_document(chat_id=call.message.chat.id, document=file)
+            except Exception as e:
+                bot.send_message(call.message.chat.id, "Произошла ошибка при отправке файла.")
+            return
+        elif call.data == "excel_not_sale":
+            file_path = 'test_data_template.xlsx'
+            try:
+                with open(file_path, 'rb') as file:
+                    bot.send_document(chat_id=call.message.chat.id, document=file)
+            except Exception as e:
+                bot.send_message(call.message.chat.id, "Произошла ошибка при отправке файла.")
+            return
+
+        # Параметры для письма
+        params = {
+            "Контрагент": "ООО Ромашка",
+            "Менеджер": "Иван Иванов",
+            "Договор_контрагента": "Договор продажи № 290 от 14.04.2025",
+            "letter_type": letter_type
+        }
+        if letter_type == "overdue":
+            params["Спецификации"] = "Спецификация № 123"
+            params["Дата_отгрузки"] = "2025-07-22"
+
+        # Вызов функции с тестовыми данными
+        file_path = create_msg_file(**params)
+        if file_path:
+            try:
+                with open(file_path, 'rb') as file:
+                    bot.send_document(chat_id=chat_id, document=file,
+                                      caption=f"{os.path.basename(file_path)}")
+            except Exception as e:
+                print(f"Ошибка при отправке в Telegram: {str(e)}")
+                bot.send_message(chat_id, "Произошла ошибка при отправке файла.")
+        else:
+            bot.send_message(chat_id, "Не удалось создать файл.")
+    except Exception as e:
+        print(f"Ошибка в handle_callback: {str(e)}")
+        bot.send_message(chat_id, f"Произошла ошибка: {str(e)}")
 
 
 @bot.message_handler(content_types=['text'])
