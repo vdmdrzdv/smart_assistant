@@ -67,17 +67,4 @@ def send_email(recipient_email, subject, content_html):
 
     print(f"Письмо отправлено на {recipient_email}")
 
-send_email_with_attachment(
-    recipient_email="dlyashkolisusu@gmail.com",
-    subject="Документы к мероприятию",
-    content_html="<p>Пожалуйста, ознакомьтесь с вложенным документом.</p>",
-    attachments=["data.xlsx"]
-)
-
-send_email(
-    recipient_email="dlyashkolisusu@gmail.com",
-    subject="Документы к мероприятию",
-    content_html="<p>Пожалуйста, ознакомьтесь с вложенным документом.</p>"
-)
-
 

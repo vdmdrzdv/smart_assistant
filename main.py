@@ -7,14 +7,17 @@ import pandas as pd
 import pytz
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton
+
 
 from Templates_1_tg import create_msg_file
 from excel_handler import create_pivot_table, extract_data
 from sales_analysis import get_trend
+from email_sender import send_email
 
 USERS_FILE = 'users_data.json'
 TIMEZONE = pytz.timezone('Asia/Yekaterinburg')
-TOKEN = '7955516321:AAGKWegG3O70jPCVk_3cQrw5wcHrfA_27o4'
+TOKEN = '6848218069:AAHVTZnFw_7Wb9Oqw427uD7PhT0FNrYlNX8'
 USER_STATES = {}
 bot = telebot.TeleBot(TOKEN)
 running = True
@@ -114,6 +117,16 @@ def get_message(company, type, trend):
     return msg, keyboard
 
 
+def get_main_keyboard():
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    keyboard.add(
+        KeyboardButton("📊 Сводка по контрагентам"),
+        KeyboardButton("ℹ️ Помощь")
+    )
+    return keyboard
+
+
+
 def get_not_sale(not_sale_df):
     now = datetime.now()
     some_weeks_later = now + timedelta(weeks=1)
@@ -138,7 +151,8 @@ def handle_start(message):
             message.chat.id,
             f"С возвращением, {users_data[user_id]['last_name']} "
             f"{users_data[user_id]['first_name']} "
-            f"{users_data[user_id].get('middle_name', '')}!"
+            f"{users_data[user_id].get('middle_name', '')}!",
+            reply_markup=get_main_keyboard()
         )
     else:
         USER_STATES[user_id] = {'state': UserState.WAITING_FOR_LAST_NAME}
@@ -155,6 +169,7 @@ def send_help(message):
         Доступные команды:
         /start - начать работу с ботом
         /help - получить справку
+        /summary - получить сводку по контрагентам
     """
     bot.send_message(message.chat.id, help_text)
 
@@ -172,9 +187,11 @@ def send_summary(message):
         if get_not_sale(not_sale_df):
             msg, keyboard = get_message(row['Контрагент'], type_company, -2)
             bot.send_message(message.chat.id, msg, parse_mode='HTML', reply_markup=keyboard)
+            send_email("dlyashkolisusu@gmail.com", "Данные контрагента", msg)
         elif isinstance(row['Тренд'], int):
             msg, keyboard = get_message(row['Контрагент'], type_company, row['Тренд'])
             bot.send_message(message.chat.id, msg, parse_mode='HTML', reply_markup=keyboard)
+            send_email("dlyashkolisusu@gmail.com", "Данные контрагента", msg)
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -254,6 +271,16 @@ def handle_callback(call):
 def handle_text(message):
     user_id = str(message.from_user.id)
 
+    text = message.text.strip()
+
+    # --- Обработка кастомных кнопок ---
+    if text == "📊 Сводка по контрагентам":
+        send_summary(message)
+        return
+    elif text == "ℹ️ Помощь":
+        send_help(message)
+        return
+
     # Пропускаем сообщения, если пользователь не в процессе регистрации
     if user_id not in USER_STATES:
         return
@@ -300,7 +327,8 @@ def handle_text(message):
         bot.send_message(
             message.chat.id,
             f"Спасибо, {full_name}! Регистрация завершена.\n"
-            f"Теперь вы можете пользоваться ботом."
+            f"Теперь вы можете пользоваться ботом.",
+            reply_markup=get_main_keyboard()
         )
 
 
@@ -333,9 +361,9 @@ def main():
         df = extract_data('data.xlsx')
         global excel_data
         excel_data = add_telegram_id_to_df(df)
-        # bg_thread = threading.Thread(target=background_task)
-        # bg_thread.daemon = True
-        # bg_thread.start()
+        #bg_thread = threading.Thread(target=background_task)
+        #bg_thread.daemon = True
+        #bg_thread.start()
         print("Бот запущен...")
         bot.infinity_polling()
     except:
