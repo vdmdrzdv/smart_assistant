@@ -17,7 +17,7 @@ month_map = {
     "Декабрь": "12"
 }
 
-# Функция для переименования названий колонок
+
 def rename_month_columns(columns):
     new_columns = []
     for col in columns:
@@ -32,7 +32,7 @@ def rename_month_columns(columns):
             new_columns.append(col)  # не месячная колонка
     return new_columns
 
-# Функция получения данных из таблицы
+
 def extract_data(file_path, sheet_name="TDSheet"):
     try:
         with warnings.catch_warnings():
@@ -40,18 +40,19 @@ def extract_data(file_path, sheet_name="TDSheet"):
             df = pd.read_excel(file_path, sheet_name=sheet_name)
 
         required_columns = [
-          "Дата отгрузки (отправки)",
-          "Контрагент",
-          "Дней просрочки",
-          "Менеджер",
-          "Номер договора",
-          "Оплачено",
-          "Январь 2025",
-          "Февраль 2025",
-          "Март 2025",
-          "Апрель 2025",
-          "Май 2025",
-          "Июнь 2025"
+            "Дата отгрузки (отправки)",
+            "Контрагент",
+            "Тип контрагента",
+            "Дней просрочки",
+            "Менеджер",
+            "Номер договора",
+            "Оплачено",
+            "Январь 2025",
+            "Февраль 2025",
+            "Март 2025",
+            "Апрель 2025",
+            "Май 2025",
+            "Июнь 2025"
         ]
         missing_columns = [col for col in required_columns if col not in df.columns]
 
@@ -63,14 +64,13 @@ def extract_data(file_path, sheet_name="TDSheet"):
         result["Дней просрочки"] = pd.to_numeric(result["Дней просрочки"], errors='coerce')
         result["Оплачено"] = pd.to_numeric(result["Оплачено"], errors='coerce')
 
-        print(result)
         return result
 
     except Exception as e:
         print(f"Произошла ошибка: {str(e)}")
         return None
 
-# Функция построения сводной таблицы
+
 def create_pivot_table(df):
     # Предположим, df — это исходный датафрейм
     month_columns = [

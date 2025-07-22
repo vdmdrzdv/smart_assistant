@@ -7,7 +7,8 @@ import pandas as pd
 import pytz
 import telebot
 
-from excel_handler import extract_data
+from excel_handler import create_pivot_table, extract_data
+from sales_analysis import get_trend
 
 USERS_FILE = 'users_data.json'
 TIMEZONE = pytz.timezone('Asia/Yekaterinburg')
@@ -85,6 +86,21 @@ def background_task():
             time.sleep(60)
 
 
+def get_message(company, type, trend):
+    msg = f'👤 <b>Контрагент:</b> {company}\n' \
+          f'📋 <b>Тип:</b> {type}\n'
+    if trend == -1:
+        msg += f'📉 <b>Состояние:</b> Падение объема закупок\n' \
+               f'🛎️ <b>Рекомендация:</b> Свяжитесь с клиентом, уточните причины снижения и предложите акции.'
+    elif trend == 0:
+        msg += f'📊 <b>Состояние:</b> Объем закупок стабильный\n' \
+               f'🛎️ <b>Рекомендация:</b> Свяжитесь с клиентом и предложите акции.'
+    elif trend == 1:
+        msg += f'📈 <b>Состояние:</b> Рост объема закупок\n' \
+               f'🛎️ <b>Рекомендация:</b> Поздравьте клиента и предложите дополнительные продукты.'
+    return msg
+
+
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     user_id = str(message.from_user.id)
@@ -114,6 +130,19 @@ def send_help(message):
         /help - получить справку
     """
     bot.send_message(message.chat.id, help_text)
+
+
+@bot.message_handler(commands=['summary'])
+def send_summary(message):
+    pivot = create_pivot_table(excel_data)
+    df = add_telegram_id_to_df(pivot)
+    df = df[df['telegram_id'] == str(message.from_user.id)]
+    df = get_trend(df)
+    for _, row in df.iterrows():
+        type_company = excel_data[excel_data['Контрагент'] == row['Контрагент']]['Тип контрагента'].iloc[0]
+        if isinstance(row['Тренд'], int):
+            msg = get_message(row['Контрагент'], type_company, row['Тренд'])
+            bot.send_message(message.chat.id, msg, parse_mode='HTML')
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -205,9 +234,9 @@ def main():
         df = extract_data('data.xlsx')
         global excel_data
         excel_data = add_telegram_id_to_df(df)
-        bg_thread = threading.Thread(target=background_task)
-        bg_thread.daemon = True
-        bg_thread.start()
+        # bg_thread = threading.Thread(target=background_task)
+        # bg_thread.daemon = True
+        # bg_thread.start()
         print("Бот запущен...")
         bot.infinity_polling()
     except:
