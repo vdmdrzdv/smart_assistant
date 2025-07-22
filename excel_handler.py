@@ -52,7 +52,8 @@ def extract_data(file_path, sheet_name="TDSheet"):
             "Март 2025",
             "Апрель 2025",
             "Май 2025",
-            "Июнь 2025"
+            "Июнь 2025",
+            "ДЗ"
         ]
         missing_columns = [col for col in required_columns if col not in df.columns]
 

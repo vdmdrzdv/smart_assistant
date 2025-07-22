@@ -121,10 +121,10 @@ def get_main_keyboard():
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     keyboard.add(
         KeyboardButton("📊 Сводка по контрагентам"),
-        KeyboardButton("ℹ️ Помощь")
+        KeyboardButton("ℹ️ Помощь"),
+        KeyboardButton("💰 Задолженности")
     )
     return keyboard
-
 
 
 def get_not_sale(not_sale_df):
@@ -170,6 +170,7 @@ def send_help(message):
         /start - начать работу с ботом
         /help - получить справку
         /summary - получить сводку по контрагентам
+        /debt - узнать ДЗ по контрагентам
     """
     bot.send_message(message.chat.id, help_text)
 
@@ -192,6 +193,37 @@ def send_summary(message):
             msg, keyboard = get_message(row['Контрагент'], type_company, row['Тренд'])
             bot.send_message(message.chat.id, msg, parse_mode='HTML', reply_markup=keyboard)
             send_email("dlyashkolisusu@gmail.com", "Данные контрагента", msg)
+
+
+@bot.message_handler(commands=['debt'])
+def send_debt(message):
+    user_id = str(message.from_user.id)
+    df = excel_data.copy()
+
+    # Фильтруем по Telegram ID
+    df = df[df['telegram_id'] == user_id]
+
+    # Фильтруем строки, где ДЗ > 0
+    debtors = df[df['ДЗ'] > 0]
+
+    if debtors.empty:
+        bot.send_message(message.chat.id, "✅ У ваших контрагентов нет задолженности.")
+        return
+
+    # Группируем по контрагенту и выводим суммы задолженностей
+    grouped = (
+        debtors.groupby(['Контрагент', 'Тип контрагента'], as_index=False)['ДЗ']
+        .sum()
+    )
+
+    for _, row in grouped.iterrows():
+        msg = (
+            f"👤 <b>Контрагент:</b> {row['Контрагент']}\n"
+            f"📋 <b>Тип:</b> {row['Тип контрагента']}\n"
+            f"💰 <b>Задолженность:</b> {row['ДЗ']:.2f} руб.\n"
+            f"<b>Рекомендация:</b> Cвязаться с клиентом для уточнения сроков оплаты."
+        )
+        bot.send_message(message.chat.id, msg, parse_mode='HTML')
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -279,6 +311,9 @@ def handle_text(message):
         return
     elif text == "ℹ️ Помощь":
         send_help(message)
+        return
+    elif text == "💰 Задолженности":
+        send_debt(message)
         return
 
     # Пропускаем сообщения, если пользователь не в процессе регистрации
