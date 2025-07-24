@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import json
 import os
 import threading
+import re
 import time
 import pandas as pd
 import pytz
@@ -10,14 +11,14 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 
 
-from Templates_1_tg import create_msg_file
+from Templates_1_tg import clean_filename, create_msg_file
 from excel_handler import create_pivot_table, extract_data
 from sales_analysis import get_trend
 from email_sender import send_email
 
 USERS_FILE = 'users_data.json'
 TIMEZONE = pytz.timezone('Asia/Yekaterinburg')
-TOKEN = '6848218069:AAHVTZnFw_7Wb9Oqw427uD7PhT0FNrYlNX8'
+TOKEN = '7955516321:AAGKWegG3O70jPCVk_3cQrw5wcHrfA_27o4'
 USER_STATES = {}
 bot = telebot.TeleBot(TOKEN)
 running = True
@@ -84,7 +85,7 @@ def background_task():
         try:
             print(f"[{datetime.now(TIMEZONE)}] Проверяю предстоящие события...")
             check_upcoming_events()
-            time.sleep(15)
+            time.sleep(60)
 
         except Exception as e:
             print(f"Ошибка в фоновом потоке: {e}")
@@ -98,22 +99,28 @@ def get_message(company, type, trend):
     if trend == -1:
         msg += f'📉 <b>Состояние:</b> Падение объема закупок\n' \
                f'🛎️ <b>Рекомендация:</b> Свяжитесь с клиентом, уточните причины снижения и обсудите индивидуальные условия.'
-        keyboard.add(InlineKeyboardButton("Письмо клиенту", callback_data="create_volume_down"))
-        keyboard.add(InlineKeyboardButton("Все данные", callback_data="excel_down"))
+
+        # Изменение: добавлен company в callback_data для передачи Контрагент (Садовников Николай Сергеевич)
+        keyboard.add(InlineKeyboardButton("Письмо клиенту", callback_data=f"create_volume_down|{company}"))
+        keyboard.add(InlineKeyboardButton("Все данные", callback_data=f"excel_down|{company}"))
     elif trend == 0:
         msg += f'📊 <b>Состояние:</b> Объем закупок стабильный\n' \
                f'🛎️ <b>Рекомендация:</b> Стабильность - признак мастерства.'
     elif trend == 1:
         msg += f'📈 <b>Состояние:</b> Рост объема закупок\n' \
                f'🛎️ <b>Рекомендация:</b> Отметьте рост объёмов и обсудите с клиентом эксклюзивные предложения.'
-        keyboard.add(InlineKeyboardButton("Письмо клиенту", callback_data="create_volume_up"))
-        keyboard.add(InlineKeyboardButton("Все данные", callback_data="excel_up"))
+
+        # Изменение: добавлен company в callback_data для передачи Контрагент (Садовников Николай Сергеевич)
+        keyboard.add(InlineKeyboardButton("Письмо клиенту", callback_data=f"create_volume_up|{company}"))
+        keyboard.add(InlineKeyboardButton("Все данные", callback_data=f"excel_up|{company}"))
     elif trend == -2:
         msg += f'⏰ <b>Состояние:</b> Есть неоплаченные счета\n' \
                f'🛎️ <b>Рекомендация:</b> Уточните причину задержки оплаты.'
-        keyboard.add(InlineKeyboardButton("Письмо клиенту", callback_data="create_unpaid"))
-        keyboard.add(InlineKeyboardButton("Все данные", callback_data="excel_not_sale"))
-    keyboard.add(InlineKeyboardButton("Обработан", callback_data="skip"))
+
+        # Изменение: добавлен company в callback_data для передачи Контрагент (Садовников Николай Сергеевич)
+        keyboard.add(InlineKeyboardButton("Письмо клиенту", callback_data=f"create_unpaid|{company}"))
+        keyboard.add(InlineKeyboardButton("Все данные", callback_data=f"excel_not_sale|{company}"))
+    keyboard.add(InlineKeyboardButton("Обработан", callback_data=f"skip|{company}"))
     return msg, keyboard
 
 
@@ -221,7 +228,7 @@ def send_debt(message):
             f"👤 <b>Контрагент:</b> {row['Контрагент']}\n"
             f"📋 <b>Тип:</b> {row['Тип контрагента']}\n"
             f"💰 <b>Задолженность:</b> {row['ДЗ']:.2f} руб.\n"
-            f"<b>Рекомендация:</b> Cвязаться с клиентом для уточнения сроков оплаты."
+            f"🛎️ <b>Рекомендация:</b> Cвязаться с клиентом для уточнения сроков оплаты."
         )
         bot.send_message(message.chat.id, msg, parse_mode='HTML')
 
@@ -233,20 +240,51 @@ def handle_callback(call):
 
     try:
         bot.answer_callback_query(call.id)
-        if call.data == "create_msg":
+        # Изменение: Извлечение Контрагент из callback_data вместо текста сообщения (Садовников Николай Сергеевич)
+        callback_parts = call.data.split('|')
+        action = callback_parts[0]
+        Контрагент = callback_parts[1] if len(callback_parts) > 1 else None
+
+        if not Контрагент:
+            bot.send_message(chat_id, "Ошибка: Контрагент не указан.")
+            return
+
+        # Изменение: Фильтрация excel_data для получения данных по Контрагент (Садовников Николай Сергеевич)
+        company_df = excel_data[excel_data['Контрагент'] == Контрагент]
+        if company_df.empty:
+            bot.send_message(chat_id, f"Данные для контрагента {Контрагент} не найдены.")
+            return
+
+        # Изменение: Извлечение параметров из excel_data для передачи в create_msg_file (Садовников Николай Сергеевич)
+        row = company_df.iloc[0]
+        Менеджер = row['Менеджер']
+        Договор_контрагента = row['Номер договора']
+        Дата_отгрузки = row['Дата отгрузки (отправки)'].strftime(
+            '%d.%m.%Y') if pd.notna(row['Дата отгрузки (отправки)']) else ""
+        Спецификации = "Спецификация № Unknown"  # Заглушка, так как Спецификации отсутствует в excel_data
+
+        # Изменение: Создание временного Excel-файла с данными сводной таблицы для Контрагент только для писем (Садовников Николай Сергеевич)
+        temp_file_path = os.path.join(
+            os.getcwd(), f"temp_data_{clean_filename(Контрагент)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+        pivot_table = create_pivot_table(excel_data)
+        company_pivot = pivot_table[pivot_table['Контрагент'] == Контрагент]
+        company_pivot.to_excel(temp_file_path, index=False)
+
+        # Обработка действий callback
+        if action == "create_msg":
             letter_type = "shipping"
-        elif call.data == "create_unpaid":
+        elif action == "create_unpaid":
             letter_type = "unpaid"
-        elif call.data == "create_volume_down":
+        elif action == "create_volume_down":
             letter_type = "volume_down"
-        elif call.data == "create_volume_up":
+        elif action == "create_volume_up":
             letter_type = "volume_up"
-        elif call.data == "create_overdue":
+        elif action == "create_overdue":
             letter_type = "overdue"
-        elif call.data == "skip":
+        elif action == "skip":
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
             return
-        elif call.data == "excel_up":
+        elif action == "excel_up":
             file_path = 'test_data_template.xlsx'
             try:
                 with open(file_path, 'rb') as file:
@@ -254,7 +292,7 @@ def handle_callback(call):
             except Exception as e:
                 bot.send_message(call.message.chat.id, "Произошла ошибка при отправке файла.")
             return
-        elif call.data == "excel_down":
+        elif action == "excel_down":
             file_path = 'test_data_template.xlsx'
             try:
                 with open(file_path, 'rb') as file:
@@ -262,7 +300,7 @@ def handle_callback(call):
             except Exception as e:
                 bot.send_message(call.message.chat.id, "Произошла ошибка при отправке файла.")
             return
-        elif call.data == "excel_not_sale":
+        elif action == "excel_not_sale":
             file_path = 'test_data_template.xlsx'
             try:
                 with open(file_path, 'rb') as file:
@@ -273,22 +311,25 @@ def handle_callback(call):
 
         # Параметры для письма
         params = {
-            "Контрагент": "ООО Ромашка",
-            "Менеджер": "Иван Иванов",
-            "Договор_контрагента": "Договор продажи № 290 от 14.04.2025",
-            "letter_type": letter_type
+            "Контрагент": Контрагент,
+            "Менеджер": Менеджер,
+            "Договор_контрагента": Договор_контрагента,
+            "letter_type": letter_type,
+            "excel_file_path": temp_file_path
         }
         if letter_type == "overdue":
-            params["Спецификации"] = "Спецификация № 123"
-            params["Дата_отгрузки"] = "2025-07-22"
+            params["Спецификации"] = Спецификации
+            params["Дата_отгрузки"] = Дата_отгрузки
 
-        # Вызов функции с тестовыми данными
+        # Изменение: Вызов create_msg_file с параметрами из excel_data (Садовников Николай Сергеевич)
         file_path = create_msg_file(**params)
         if file_path:
             try:
                 with open(file_path, 'rb') as file:
                     bot.send_document(chat_id=chat_id, document=file,
                                       caption=f"{os.path.basename(file_path)}")
+                    # Изменение: Очистка временного Excel-файла после отправки (Садовников Николай Сергеевич)
+                    os.remove(temp_file_path)
             except Exception as e:
                 print(f"Ошибка при отправке в Telegram: {str(e)}")
                 bot.send_message(chat_id, "Произошла ошибка при отправке файла.")
@@ -396,9 +437,9 @@ def main():
         df = extract_data('data.xlsx')
         global excel_data
         excel_data = add_telegram_id_to_df(df)
-        #bg_thread = threading.Thread(target=background_task)
-        #bg_thread.daemon = True
-        #bg_thread.start()
+        bg_thread = threading.Thread(target=background_task)
+        bg_thread.daemon = True
+        bg_thread.start()
         print("Бот запущен...")
         bot.infinity_polling()
     except:

@@ -40,6 +40,7 @@ def extract_data(file_path, sheet_name="TDSheet"):
             df = pd.read_excel(file_path, sheet_name=sheet_name)
 
         required_columns = [
+            "Спецификации",
             "Дата отгрузки (отправки)",
             "Контрагент",
             "Тип контрагента",
@@ -64,6 +65,7 @@ def extract_data(file_path, sheet_name="TDSheet"):
         result["Дата отгрузки (отправки)"] = pd.to_datetime(result["Дата отгрузки (отправки)"], errors='coerce')
         result["Дней просрочки"] = pd.to_numeric(result["Дней просрочки"], errors='coerce')
         result["Оплачено"] = pd.to_numeric(result["Оплачено"], errors='coerce')
+        result["ДЗ"] = pd.to_numeric(result["ДЗ"], errors='coerce')
 
         return result
 

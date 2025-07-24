@@ -11,7 +11,7 @@ def clean_filename(filename):
     return re.sub(invalid_chars, '_', filename)
 
 
-def create_msg_file(Контрагент="Клиент", Менеджер="Имя Менеджера", Договор_контрагента="", Спецификации="", Дата_отгрузки="", save_path="C:\\Helper\\emails", letter_type="shipping"):
+def create_msg_file(Контрагент="Клиент", Менеджер="Имя Менеджера", Договор_контрагента="", Спецификации="", Дата_отгрузки="", save_path=os.getcwd(), letter_type="shipping", excel_file_path=None):
     try:
         # Инициализация COM в текущем потоке
         pythoncom.CoInitialize()
@@ -22,6 +22,13 @@ def create_msg_file(Контрагент="Клиент", Менеджер="Им�
 
         # Текущая дата для письма о просрочке
         current_date = date.today().strftime("%d.%m.%Y")
+
+        # Проверка пути к файлу вложения
+        if excel_file_path and os.path.exists(excel_file_path):
+            attachment_path = excel_file_path
+        else:
+            print(f"Файл {excel_file_path} не найден")
+            attachment_path = None
 
         # Установка параметров письма в зависимости от типа
         if letter_type == "shipping":
@@ -38,11 +45,8 @@ def create_msg_file(Контрагент="Клиент", Менеджер="Им�
             Трубная металлургическая компания
             """
             file_prefix = "Уведомление_отгрузка_ТМК"
-            attachment_path = 'test_data_template.xlsx'
-            if os.path.exists(attachment_path):
+            if attachment_path:
                 mail.Attachments.Add(attachment_path)
-            else:
-                print(f"Файл {attachment_path} не найден")
         elif letter_type == "unpaid":
             mail.Subject = f"Уведомление от ТМК о неоплаченных счетах для {Контрагент}"
             mail.To = f"{Контрагент}@example.com"
@@ -57,11 +61,8 @@ def create_msg_file(Контрагент="Клиент", Менеджер="Им�
             Трубная металлургическая компания
             """
             file_prefix = "Уведомление_неоплаченные_счета_ТМК"
-            attachment_path = 'test_data_template.xlsx'
-            if os.path.exists(attachment_path):
+            if attachment_path:
                 mail.Attachments.Add(attachment_path)
-            else:
-                print(f"Файл {attachment_path} не найден")
         elif letter_type == "volume_down":
             mail.Subject = f"Уведомление от ТМК о падении объема закупок для {Контрагент}"
             mail.To = f"{Контрагент}@example.com"
@@ -76,11 +77,8 @@ def create_msg_file(Контрагент="Клиент", Менеджер="Им�
             Трубная металлургическая компания
             """
             file_prefix = "Уведомление_падение_объема_закупок_ТМК"
-            attachment_path = 'test_data_template.xlsx'
-            if os.path.exists(attachment_path):
+            if attachment_path:
                 mail.Attachments.Add(attachment_path)
-            else:
-                print(f"Файл {attachment_path} не найден")
         elif letter_type == "volume_up":
             mail.Subject = f"Уведомление от ТМК о росте объема закупок для {Контрагент}"
             mail.To = f"{Контрагент}@example.com"
@@ -95,11 +93,8 @@ def create_msg_file(Контрагент="Клиент", Менеджер="Им�
             Трубная металлургическая компания
             """
             file_prefix = "Уведомление_рост_объема_закупок_ТМК"
-            attachment_path = 'test_data_template.xlsx'
-            if os.path.exists(attachment_path):
+            if attachment_path:
                 mail.Attachments.Add(attachment_path)
-            else:
-                print(f"Файл {attachment_path} не найден")
         elif letter_type == "overdue":
             mail.Subject = f"Уведомление от ТМК о просрочке по счетам для {Контрагент}"
             mail.To = f"{Контрагент}@example.com"
@@ -114,11 +109,9 @@ def create_msg_file(Контрагент="Клиент", Менеджер="Им�
             Трубная металлургическая компания
             """
             file_prefix = "Уведомление_просрочка_по_счетам_ТМК"
-            attachment_path = 'test_data_template.xlsx'
-            if os.path.exists(attachment_path):
+            if attachment_path:
                 mail.Attachments.Add(attachment_path)
-            else:
-                print(f"Файл {attachment_path} не найден")
+
         # Создание папки для сохранения, если она не существует
         if not os.path.exists(save_path):
             os.makedirs(save_path)
